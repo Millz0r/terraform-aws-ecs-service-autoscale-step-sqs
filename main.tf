@@ -8,37 +8,16 @@ Autoscaling: ECS service, cloudwatch alarms, application autoscaling
 Look at prod-semzen-ocr
 4 alarms: down (cpu), up (cpu), queue-down, queue-up
 
-/**/
+*/
 
 # Outputs ?
-
-module "label" {
-  source     = "appzen-oss/label/local"
-  version    = "0.3.1"
-  attributes = "${var.attributes}"
-  component  = "${var.component}"
-  delimiter  = "${var.delimiter}"
-
-  #enabled       = "${module.enabled.value}"
-  environment   = "${var.environment}"
-  monitor       = "${var.monitor}"
-  name          = "${var.name}"
-  namespace-env = "${var.namespace-env}"
-  namespace-org = "${var.namespace-org}"
-  organization  = "${var.organization}"
-  owner         = "${var.owner}"
-  product       = "${var.product}"
-  service       = "${var.service}"
-  tags          = "${var.tags}"
-  team          = "${var.team}"
-}
 
 ##
 ## Autoscaling IAM
 ##
 resource "aws_iam_role" "ecs_service_autoscale" {
-  name = "${module.label.id}-ecs-service-autoscale"
-  tags = "${module.label.tags}"
+  name = "${var.name}-autoscale"
+  tags = "${var.tags}"
 
   assume_role_policy = <<EOF
 {
@@ -80,13 +59,13 @@ resource "aws_appautoscaling_target" "target" {
 ##
 resource "aws_appautoscaling_policy" "scale_up" {
   depends_on         = ["aws_appautoscaling_target.target"]
-  name               = "${module.label.id}-sqs-up"
+  name               = "${var.name}-sqs-up"
   policy_type        = "StepScaling"
   resource_id        = "service/${var.cluster_name}/${var.service_name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 
-  step_scaling_policy_configuration = {
+  step_scaling_policy_configuration {
     cooldown                 = "${var.scale_up_cooldown}"
     adjustment_type          = "${var.adjustment_type_up}"
     metric_aggregation_type  = "Average"
@@ -105,13 +84,13 @@ resource "aws_appautoscaling_policy" "scale_big_up" {
     ? 1 : 0}"
 
   depends_on         = ["aws_appautoscaling_target.target"]
-  name               = "${module.label.id}-sqs-big-up"
+  name               = "${var.name}-sqs-big-up"
   policy_type        = "StepScaling"
   resource_id        = "service/${var.cluster_name}/${var.service_name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 
-  step_scaling_policy_configuration = {
+  step_scaling_policy_configuration {
     cooldown                 = "${var.scale_big_up_cooldown}"
     adjustment_type          = "${var.adjustment_type_up}"
     metric_aggregation_type  = "Average"
@@ -127,13 +106,13 @@ resource "aws_appautoscaling_policy" "scale_big_up" {
 
 resource "aws_appautoscaling_policy" "scale_down" {
   depends_on         = ["aws_appautoscaling_target.target"]
-  name               = "${module.label.id}-sqs-down"
+  name               = "${var.name}-sqs-down"
   policy_type        = "StepScaling"
   resource_id        = "service/${var.cluster_name}/${var.service_name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 
-  step_scaling_policy_configuration = {
+  step_scaling_policy_configuration {
     cooldown                 = "${var.scale_down_cooldown}"
     adjustment_type          = "${var.adjustment_type_down}"
     metric_aggregation_type  = "Average"
@@ -151,8 +130,8 @@ resource "aws_appautoscaling_policy" "scale_down" {
 ## Cloudwatch Alarms
 ##
 resource "aws_cloudwatch_metric_alarm" "service_max_stuck" {
-  alarm_name                = "${module.label.id}-max-stuck"
-  alarm_description         = "${module.label.id} is possibly stuck at max"
+  alarm_name                = "${var.name}-max-stuck"
+  alarm_description         = "${var.name} is possibly stuck at max"
   comparison_operator       = "GreaterThanOrEqualToThreshold"
   evaluation_periods        = "${var.stuck_eval_minutes}"
   metric_name               = "CPUUtilization"
@@ -172,7 +151,7 @@ resource "aws_cloudwatch_metric_alarm" "service_max_stuck" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "service_queue_high" {
-  alarm_name          = "${module.label.id}-sqs-up"
+  alarm_name          = "${var.name}-sqs-up"
   alarm_description   = "This alarm monitors ${var.queue_name} Queue count utilization for scaling up"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
@@ -201,7 +180,7 @@ resource "aws_cloudwatch_metric_alarm" "service_queue_high" {
 
       #      unit        = "Count"
 
-      dimensions {
+      dimensions = {
         QueueName = "${var.queue_name}"
       }
     }
@@ -217,7 +196,7 @@ resource "aws_cloudwatch_metric_alarm" "service_queue_high" {
 
       #  unit        = "Count"
 
-      dimensions {
+      dimensions = {
         QueueName = "${var.queue_name}"
       }
     }
@@ -229,12 +208,12 @@ resource "aws_cloudwatch_metric_alarm" "service_queue_big_high" {
     var.high_big_threshold > 0
     ? 1 : 0}"
 
-  alarm_name          = "${module.label.id}-sqs-big-up"
+  alarm_name          = "${var.name}-sqs-big-up"
   alarm_description   = "This alarm monitors ${var.queue_name} Queue count utilization for big scaling up"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
   threshold           = "${var.high_big_threshold}"
-  alarm_actions       = ["${aws_appautoscaling_policy.scale_big_up.arn}"]
+  alarm_actions       = ["${aws_appautoscaling_policy.scale_big_up[0].arn}"]
 
   #  namespace           = "AWS/SQS"
   #  period              = "60"
@@ -258,7 +237,7 @@ resource "aws_cloudwatch_metric_alarm" "service_queue_big_high" {
 
       #      unit        = "Count"
 
-      dimensions {
+      dimensions = {
         QueueName = "${var.queue_name}"
       }
     }
@@ -274,7 +253,7 @@ resource "aws_cloudwatch_metric_alarm" "service_queue_big_high" {
 
       #  unit        = "Count"
 
-      dimensions {
+      dimensions = {
         QueueName = "${var.queue_name}"
       }
     }
@@ -283,7 +262,7 @@ resource "aws_cloudwatch_metric_alarm" "service_queue_big_high" {
 
 # A CloudWatch alarm that monitors CPU utilization of containers for scaling down
 resource "aws_cloudwatch_metric_alarm" "service_queue_low" {
-  alarm_name          = "${module.label.id}-sqs-down"
+  alarm_name          = "${var.name}-sqs-down"
   alarm_description   = "This alarm monitors ${var.queue_name} Queue count utilization for scaling down"
   comparison_operator = "LessThanOrEqualToThreshold"
   evaluation_periods  = "1"
@@ -307,7 +286,7 @@ resource "aws_cloudwatch_metric_alarm" "service_queue_low" {
 
       #  unit        = "Count"
 
-      dimensions {
+      dimensions = {
         QueueName = "${var.queue_name}"
       }
     }
@@ -323,7 +302,7 @@ resource "aws_cloudwatch_metric_alarm" "service_queue_low" {
 
       #  unit        = "Count"
 
-      dimensions {
+      dimensions = {
         QueueName = "${var.queue_name}"
       }
     }
